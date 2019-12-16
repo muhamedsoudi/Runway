@@ -1,5 +1,6 @@
 ---
 ignore_git_branch: true
+
 deployments:
   - modules:
       - app.cfn
