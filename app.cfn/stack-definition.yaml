@@ -1,0 +1,27 @@
+namespace: ${namespace}
+stacker_bucket: ''
+
+sys_path: ./
+
+tags:
+  Application: ${applicationName}
+  Environment: ${environment}
+
+stacks:
+  # VPC-005 Stack Information
+  VPC-Stack:
+    template_path: CF-Templates/Base-CFVpcTemplate.yml 
+    variables: 
+      VpcCIDR: ${VpcCIDR}
+      FirstPublicSubnetCIDR: ${FirstPublicSubnetCIDR}
+      SecondPublicSubnetCIDR: ${SecondPublicSubnetCIDR}
+      FirstPrivateSubnetCIDR: ${FirstPrivateSubnetCIDR}
+      SecondPrivateSubnetCIDR: ${SecondPrivateSubnetCIDR}
+  # Servers-005 Stack Information
+  Servers-Stack:
+    template_path: CF-Templates/ServersCF.yml 
+    variables: 
+      VpcStackName:  ${output VPC-Stack::VpcStackName}
+      KeyPair: ${KeyPair}
+      InstanceType: ${InstanceType}
+      AllowedSSHIP: ${AllowedSSHIP}

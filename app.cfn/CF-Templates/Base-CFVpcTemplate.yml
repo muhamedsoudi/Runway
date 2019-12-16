@@ -1,0 +1,287 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template deploys a VPC, with a pair of public and private subnets spread
+  across two Availability Zones. It deploys an internet gateway, with a default
+  route on the public subnets. It deploys a pair of NAT gateways (one in each AZ),
+  and default routes for them in the private subnets.
+
+Parameters: 
+  VpcCIDR:
+    Description: Please enter the IP range (CIDR notation) for this VPC
+    Type: String
+    Default: 10.40.0.0/16
+  FirstPublicSubnetCIDR:
+    Description: Please enter the IP range (CIDR notation) for the public subnet in the first Availability Zone
+    Type: String
+    Default: 10.40.1.0/24
+  SecondPublicSubnetCIDR:
+    Description: Please enter the IP range (CIDR notation) for the public subnet in the second Availability Zone
+    Type: String
+    Default: 10.40.2.0/24
+  FirstPrivateSubnetCIDR:
+    Description: Please enter the IP range (CIDR notation) for the private subnet in the first Availability Zone
+    Type: String
+    Default: 10.40.10.0/24
+  SecondPrivateSubnetCIDR:
+    Description: Please enter the IP range (CIDR notation) for the private subnet in the second Availability Zone
+    Type: String
+    Default: 10.40.20.0/24
+
+Resources: 
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      Tags:
+        - Key: Name
+          Value: Vpc-Cet005
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: Igw-Vpc-Cet005
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  # Subnets Section
+  FirstPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      VpcId: !Ref VPC
+      CidrBlock: !Ref FirstPublicSubnetCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: PublicaSubnet-A
+  SecondPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SecondPublicSubnetCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: PublicaSubnet-B
+  FirstPrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      VpcId: !Ref VPC
+      CidrBlock: !Ref FirstPrivateSubnetCIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: PrivateSubnet-A
+  SecondPrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SecondPrivateSubnetCIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: PrivateSubnet-B
+  # Elastic IPs and NAT Gateway Section
+  NatGateway1EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+  NatGateway2EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+  NatGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway1EIP.AllocationId
+      SubnetId: !Ref FirstPublicSubnet
+      Tags:
+        - Key: Name
+          Value: NAT-005-A
+  NatGateway2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway2EIP.AllocationId
+      SubnetId: !Ref SecondPublicSubnet
+      Tags:
+        - Key: Name
+          Value: NAT-005-B
+# This Route Table Will be used to make two subnets public and have intenrnet connectivity 
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: Default Route Table
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  FirstPublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref FirstPublicSubnet
+  SecondPublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref SecondPublicSubnet
+ # These Route Tables will be used to make the two private instances associated with NAT Gateway to access the internet (Outbound Connection Only)
+  FirstPrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: First Private Route Table 
+  FirstPrivateRouteTableRoutes:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref FirstPrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway1
+  FirstPrivateSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref FirstPrivateSubnet
+      RouteTableId: !Ref FirstPrivateRouteTable
+  SecondPrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: Second Private Route Table 
+  SecondPrivateRouteTableRoutes:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref SecondPrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway2
+  SecondPrivateSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SecondPrivateSubnet
+      RouteTableId: !Ref SecondPrivateRouteTable
+  # Network ACL For Private Subnets
+  PrivateNetworkAcl:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+       - Key: Name
+         Value: PrivateNACL
+  PrivateInboundSSHNetworkAclEntry:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+       NetworkAclId: !Ref PrivateNetworkAcl
+       RuleNumber: 50
+       Protocol: 6
+       RuleAction: allow
+       Egress: "false"
+       CidrBlock: !Sub ${VPC.CidrBlock}
+       PortRange:
+        From: 22
+        To: 22
+  PrivateOutboundSSHNetworkAclEntry:
+      Type: AWS::EC2::NetworkAclEntry
+      Properties:
+         NetworkAclId: !Ref PrivateNetworkAcl
+         RuleNumber: 50
+         Protocol: 6
+         RuleAction: allow
+         Egress: "true"
+         CidrBlock: !Sub ${VPC.CidrBlock}
+         PortRange:
+          From: 22
+          To: 22
+  PrivateInboundHttpNetworkAclEntry:
+      Type: AWS::EC2::NetworkAclEntry
+      Properties:
+         NetworkAclId: !Ref PrivateNetworkAcl
+         RuleNumber: 51
+         Protocol: 6
+         RuleAction: allow
+         Egress: "false"
+         CidrBlock: !Sub ${VPC.CidrBlock}
+         PortRange:
+          From: 80
+          To: 80
+  PrivateOutboundHttpNetworkAclEntry:
+      Type: AWS::EC2::NetworkAclEntry
+      Properties:
+         NetworkAclId: !Ref PrivateNetworkAcl
+         RuleNumber: 51
+         Protocol: 6
+         RuleAction: allow
+         Egress: "true"
+         CidrBlock: !Sub ${VPC.CidrBlock}
+         PortRange:
+          From: 80
+          To: 80
+  PrivatecSubnetNetworkAclAssociationA:
+      Type: "AWS::EC2::SubnetNetworkAclAssociation"
+      Properties:
+        SubnetId: !Ref FirstPrivateSubnet
+        NetworkAclId: !Ref PrivateNetworkAcl
+  PrivateSubnetNetworkAclAssociationB:
+      Type: "AWS::EC2::SubnetNetworkAclAssociation"
+      Properties:
+        SubnetId: !Ref SecondPrivateSubnet
+        NetworkAclId: !Ref PrivateNetworkAcl
+
+
+Outputs:
+  VpcStackName:
+    Description: Created VPC Stack Name
+    Value: !Sub ${AWS::StackName}
+    Export:
+      Name:  VpcStackName
+  VPCID:
+    Description: A reference to the created VPC
+    Value: !Ref VPC
+    Export: 
+      Name: !Sub ${AWS::StackName}-VPCID
+  VpcCidrBlock:
+    Description: A reference to the created VPC CIDR block
+    Value: !GetAtt VPC.CidrBlock
+    Export: 
+      Name: !Sub ${AWS::StackName}-Vpc-CIDR:CidrBlock
+  PublicSubnets:
+    Description: A list of the public subnets
+    Value: !Join [ ",", [ !Ref FirstPublicSubnet, !Ref SecondPublicSubnet ]]
+  PrivateSubnets:
+    Description: A list of the private subnets
+    Value: !Join [ ",", [ !Ref FirstPrivateSubnet, !Ref SecondPrivateSubnet ]]
+  FirstPublicSubnetID:
+    Description: A reference to the public subnet in A Availability Zone
+    Value: !Ref FirstPublicSubnet
+    Export: 
+      Name: !Sub "${AWS::StackName}-PublicSubnet-A-ID:SubnetId"
+  SecondPublicSubnetID:
+    Description: A reference to the public subnet in B Availability Zone
+    Value: !Ref SecondPublicSubnet
+    Export: 
+      Name: !Sub "${AWS::StackName}-PublicSubnet-B-ID:SubnetId"
+  FirstPrivateSubnetID:
+    Description: A reference to the private subnet in A Availability Zone
+    Value: !Ref FirstPrivateSubnet
+    Export: 
+      Name: !Sub "${AWS::StackName}-PrivateSubnet-A-ID:SubnetId"
+  SecondPrivateSubnetID:
+    Description: A reference to the private subnet in B Availability Zone
+    Value: !Ref SecondPrivateSubnet
+    Export: 
+      Name: !Sub "${AWS::StackName}-PrivateSubnet-B-ID:SubnetId"

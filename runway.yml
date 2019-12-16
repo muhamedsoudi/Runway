@@ -1,0 +1,6 @@
+---
+deployments:
+  - modules:
+      - app.cfn
+    regions:
+      - us-east-1
